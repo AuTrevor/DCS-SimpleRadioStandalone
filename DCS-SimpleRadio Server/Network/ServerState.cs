@@ -8,6 +8,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Caliburn.Micro;
 using Ciribob.DCS.SimpleRadio.Standalone.Common;
+using Ciribob.DCS.SimpleRadio.Standalone.Common.Network;
 using Ciribob.DCS.SimpleRadio.Standalone.Common.Setting;
 using Ciribob.DCS.SimpleRadio.Standalone.Server.Settings;
 using Newtonsoft.Json;
@@ -29,7 +30,7 @@ namespace Ciribob.DCS.SimpleRadio.Standalone.Server.Network
             new ConcurrentDictionary<string, SRClient>();
 
         private readonly IEventAggregator _eventAggregator;
-        private TCPVoiceRouter _serverListener;
+        private UDPVoiceRouter _serverListener;
         private ServerSync _serverSync;
         private volatile bool _stop = true;
 
@@ -108,8 +109,16 @@ namespace Ciribob.DCS.SimpleRadio.Standalone.Server.Network
                 {
                     if (ServerSettingsStore.Instance.GetGeneralSetting(ServerSettingsKeys.CLIENT_EXPORT_ENABLED).BoolValue)
                     {
-                        var json = JsonConvert.SerializeObject(_connectedClients.Values) + "\n";
-                        File.WriteAllText(exportFilePath, json);
+                        ClientListExport data = new ClientListExport { Clients = _connectedClients.Values, ServerVersion = UpdaterChecker.VERSION };
+                        var json = JsonConvert.SerializeObject(data) + "\n";
+                        try
+                        {
+                            File.WriteAllText(exportFilePath, json);
+                        }
+                        catch (IOException e)
+                        {
+                            Logger.Error(e);
+                        }
                     }
                     Thread.Sleep(5000);
                 }
@@ -170,9 +179,9 @@ namespace Ciribob.DCS.SimpleRadio.Standalone.Server.Network
 
                 PopulateBanList();
 
-                _serverListener = new TCPVoiceRouter(_connectedClients, _eventAggregator);
-                var voipListenerThread = new Thread(_serverListener.StartListening);
-                voipListenerThread.Start();
+                _serverListener = new UDPVoiceRouter(_connectedClients, _eventAggregator);
+                var listenerThread = new Thread(_serverListener.Listen);
+                listenerThread.Start();
 
                 _serverSync = new ServerSync(_connectedClients, _bannedIps, _eventAggregator);
                 var serverSyncThread = new Thread(_serverSync.StartListening);
@@ -198,7 +207,7 @@ namespace Ciribob.DCS.SimpleRadio.Standalone.Server.Network
             {
                 try
                 {
-                    client.ClientSocket.Disconnect(false);
+                    ((SRSClientSession)client.ClientSession).Disconnect();
                 }
                 catch (Exception e)
                 {
@@ -211,7 +220,7 @@ namespace Ciribob.DCS.SimpleRadio.Standalone.Server.Network
         {
             try
             {
-                var remoteIpEndPoint = client.ClientSocket.RemoteEndPoint as IPEndPoint;
+                var remoteIpEndPoint = ((SRSClientSession)client.ClientSession).Socket.RemoteEndPoint as IPEndPoint;
 
                 _bannedIps.Add(remoteIpEndPoint.Address);
 

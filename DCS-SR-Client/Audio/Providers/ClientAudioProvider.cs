@@ -17,16 +17,24 @@ namespace Ciribob.DCS.SimpleRadio.Standalone.Client
 {
     public class ClientAudioProvider : AudioProvider
     {
-        public static readonly int SILENCE_PAD = 300;
+        public static readonly int SILENCE_PAD = 200;
 
         private readonly Random _random = new Random();
 
         private int _lastReceivedOn = -1;
         private OnlineFilter[] _filters;
 
+        private readonly BiQuadFilter _highPassFilter;
+        private readonly BiQuadFilter _lowPassFilter;
+
         private OpusDecoder _decoder;
-        
+
         private static readonly Logger Logger = LogManager.GetCurrentClassLogger();
+
+        private short[] natoTone = null;
+        private int natoPosition = 0;
+        //used for comparison
+        public static readonly short FM = Convert.ToInt16((int)RadioInformation.Modulation.FM);
 
         public ClientAudioProvider()
         {
@@ -40,9 +48,27 @@ namespace Ciribob.DCS.SimpleRadio.Standalone.Client
                 new JitterBufferProviderInterface(new WaveFormat(AudioManager.INPUT_SAMPLE_RATE, 2));
 
             SampleProvider = new Pcm16BitToSampleProvider(JitterBufferProviderInterface);
-            
+
             _decoder = OpusDecoder.Create(AudioManager.INPUT_SAMPLE_RATE, 1);
             _decoder.ForwardErrorCorrection = false;
+
+            _highPassFilter = BiQuadFilter.HighPassFilter(AudioManager.INPUT_SAMPLE_RATE, 520, 0.97f);
+            _lowPassFilter = BiQuadFilter.LowPassFilter(AudioManager.INPUT_SAMPLE_RATE, 4130, 2.0f);
+
+            var effect = new CachedAudioEffect(CachedAudioEffect.AudioEffectTypes.NATO_TONE);
+            
+            if (effect.AudioEffectBytes.Length > 0)
+            {
+                natoTone = ConversionHelpers.ByteArrayToShortArray(effect.AudioEffectBytes);
+
+                var vol = Settings.GlobalSettingsStore.Instance.GetClientSetting(GlobalSettingsKeys.NATOToneVolume)
+                    .FloatValue;
+
+                for (int i = 0; i < natoTone.Length; i++)
+                {
+                    natoTone[i] = (short)(natoTone[i] * vol);
+                }
+            }
         }
 
         public JitterBufferProviderInterface JitterBufferProviderInterface { get; }
@@ -72,7 +98,7 @@ namespace Ciribob.DCS.SimpleRadio.Standalone.Client
             bool newTransmission = LikelyNewTransmission();
 
             int decodedLength = 0;
-            
+
             var decoded = _decoder.Decode(audio.EncodedAudio,
                 audio.EncodedAudio.Length, out decodedLength, newTransmission);
 
@@ -94,20 +120,24 @@ namespace Ciribob.DCS.SimpleRadio.Standalone.Client
                     //adjust for LOS + Distance + Volume
                     AdjustVolume(audio);
 
-                    ////no radio effect for intercom
-                    if (audio.ReceivedRadio != 0)
+                    if (globalSettings.GetClientSettingBool(ProfileSettingsKeys.RadioEffects))
                     {
-                        if (_settings.GetClientSetting(SettingsKeys.RadioEffects).BoolValue)
+                        if (audio.ReceivedRadio == 0)
+                        {
+                            AddRadioEffectIntercom(audio);
+                        }
+                        else
                         {
                             AddRadioEffect(audio);
                         }
                     }
+
                 }
                 else
                 {
                     AddEncryptionFailureEffect(audio);
 
-                    if (_settings.GetClientSetting(SettingsKeys.RadioEffects).BoolValue)
+                    if (globalSettings.GetClientSettingBool(ProfileSettingsKeys.RadioEffects))
                     {
                         AddRadioEffect(audio);
                     }
@@ -127,7 +157,7 @@ namespace Ciribob.DCS.SimpleRadio.Standalone.Client
                 }
 
                 _lastReceivedOn = audio.ReceivedRadio;
-                LastUpdate = DateTime.Now.Ticks; 
+                LastUpdate = DateTime.Now.Ticks;
 
                 JitterBufferProviderInterface.AddSamples(new JitterBufferAudio
                 {
@@ -143,6 +173,35 @@ namespace Ciribob.DCS.SimpleRadio.Standalone.Client
             {
                 Logger.Info("Failed to decode audio from Packet for client");
             }
+        }
+
+        private void AddRadioEffectIntercom(ClientAudio clientAudio)
+        {
+            var mixedAudio = clientAudio.PcmAudioShort;
+
+            for (var i = 0; i < mixedAudio.Length; i++)
+            {
+                var audio = mixedAudio[i] / 32768f;
+
+                audio = _highPassFilter.Transform(audio);
+
+                if (float.IsNaN(audio))
+                    audio = _lowPassFilter.Transform(mixedAudio[i]);
+                else
+                    audio = _lowPassFilter.Transform(audio);
+
+                if (!float.IsNaN(audio))
+                {
+                    // clip
+                    if (audio > 1.0f)
+                        audio = 1.0f;
+                    if (audio < -1.0f)
+                        audio = -1.0f;
+
+                    mixedAudio[i] = (short)(audio * 32767);
+                }
+            }
+
         }
 
         private void AdjustVolume(ClientAudio clientAudio)
@@ -179,7 +238,7 @@ namespace Ciribob.DCS.SimpleRadio.Standalone.Client
             {
                 var audio = (double) mixedAudio[i] / 32768f;
 
-                if (_settings.GetClientSetting(SettingsKeys.RadioEffectsClipping).BoolValue)
+                if (globalSettings.GetClientSettingBool(ProfileSettingsKeys.RadioEffectsClipping))
                 {
                     if (audio > RadioFilter.CLIPPING_MAX)
                     {
@@ -209,7 +268,21 @@ namespace Ciribob.DCS.SimpleRadio.Standalone.Client
                     }
                 }
 
-                mixedAudio[i] = (short) (audio * 32767);
+                var shortAudio = (short)(audio * 32767);
+
+                if (clientAudio.Modulation == FM
+                    && natoTone !=null && globalSettings.GetClientSettingBool(ProfileSettingsKeys.NATOTone))
+                {
+                    shortAudio += natoTone[natoPosition];
+                    natoPosition++;
+
+                    if (natoPosition == natoTone.Length)
+                    {
+                        natoPosition = 0;
+                    }
+                }
+
+                mixedAudio[i] = shortAudio;
             }
         }
 
@@ -235,6 +308,6 @@ namespace Ciribob.DCS.SimpleRadio.Standalone.Client
             _decoder.Dispose();
             _decoder = null;
         }
-       
+
     }
 }

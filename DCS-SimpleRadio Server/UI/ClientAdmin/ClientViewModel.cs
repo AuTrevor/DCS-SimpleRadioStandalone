@@ -3,6 +3,7 @@ using System.Windows;
 using System.Windows.Media;
 using Caliburn.Micro;
 using Ciribob.DCS.SimpleRadio.Standalone.Common;
+using Ciribob.DCS.SimpleRadio.Standalone.Common.Network;
 using Ciribob.DCS.SimpleRadio.Standalone.Server.Network;
 using NLog;
 using LogManager = NLog.LogManager;
@@ -24,6 +25,10 @@ namespace Ciribob.DCS.SimpleRadio.Standalone.Server.UI.ClientAdmin
         public SRClient Client { get; }
 
         public string ClientName => Client.Name;
+
+        public string TransmittingFrequency => Client.TransmittingFrequency;
+
+        public bool ClientMuted => Client.Muted;
 
         public SolidColorBrush ClientCoalitionColour
         {
@@ -49,6 +54,10 @@ namespace Ciribob.DCS.SimpleRadio.Standalone.Server.UI.ClientAdmin
             {
                 NotifyOfPropertyChange(() => ClientCoalitionColour);
             }
+            else if (propertyChangedEventArgs.PropertyName == "TransmittingFrequency")
+            {
+                NotifyOfPropertyChange(() => TransmittingFrequency);
+            }
         }
 
         public void KickClient()
@@ -69,6 +78,12 @@ namespace Ciribob.DCS.SimpleRadio.Standalone.Server.UI.ClientAdmin
             {
                 _eventAggregator.PublishOnBackgroundThread(new BanClientMessage(Client));
             }
+        }
+
+        public void ToggleClientMute()
+        {
+            Client.Muted = !Client.Muted;
+            NotifyOfPropertyChange(() => ClientMuted);
         }
     }
 }

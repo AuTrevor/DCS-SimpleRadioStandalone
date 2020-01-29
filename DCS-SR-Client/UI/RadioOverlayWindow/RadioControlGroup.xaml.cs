@@ -1,14 +1,17 @@
-﻿using System.Globalization;
+﻿using System.Collections.Concurrent;
+using System.Globalization;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Media;
 using Ciribob.DCS.SimpleRadio.Standalone.Client.Network;
+using Ciribob.DCS.SimpleRadio.Standalone.Client.Settings;
 using Ciribob.DCS.SimpleRadio.Standalone.Client.Settings.RadioChannels;
 using Ciribob.DCS.SimpleRadio.Standalone.Client.Singletons;
 using Ciribob.DCS.SimpleRadio.Standalone.Client.UI.RadioOverlayWindow.PresetChannels;
 using Ciribob.DCS.SimpleRadio.Standalone.Client.Utils;
 using Ciribob.DCS.SimpleRadio.Standalone.Common;
+using Ciribob.DCS.SimpleRadio.Standalone.Common.Network;
 
 namespace Ciribob.DCS.SimpleRadio.Standalone.Client.UI.RadioOverlayWindow
 {
@@ -20,6 +23,7 @@ namespace Ciribob.DCS.SimpleRadio.Standalone.Client.UI.RadioOverlayWindow
         private const double MHz = 1000000;
         private bool _dragging;
         private readonly ClientStateSingleton _clientStateSingleton = ClientStateSingleton.Instance;
+        private readonly ConnectedClientsSingleton _connectClientsSingleton = ConnectedClientsSingleton.Instance;
 
         public PresetChannelsViewModel ChannelViewModel { get; set; }
 
@@ -200,6 +204,9 @@ namespace Ciribob.DCS.SimpleRadio.Standalone.Client.UI.RadioOverlayWindow
                 RadioFrequency.Text = "Unknown";
 
                 RadioVolume.IsEnabled = false;
+                RadioVolume.Width = 115;
+
+                TunedClients.Visibility = Visibility.Hidden;
 
                 ToggleButtons(false);
 
@@ -210,7 +217,7 @@ namespace Ciribob.DCS.SimpleRadio.Standalone.Client.UI.RadioOverlayWindow
             {
                 if (RadioId == dcsPlayerRadioInfo.selected)
                 {
-                    var transmitting = TCPVoiceHandler.RadioSendingState;
+                    var transmitting = UdpVoiceHandler.RadioSendingState;
 
                     if (transmitting.IsSending && (transmitting.SendingOn == RadioId))
                     {
@@ -259,13 +266,26 @@ namespace Ciribob.DCS.SimpleRadio.Standalone.Client.UI.RadioOverlayWindow
                         RadioFrequency.Text += " C" + currentRadio.channel;
                     }
 
-
                     if (currentRadio.enc && (currentRadio.encKey > 0))
                     {
                         RadioFrequency.Text += " E" + currentRadio.encKey; // ENCRYPTED
                     }
-                }
 
+                    int count = _connectClientsSingleton.ClientsOnFreq(currentRadio.freq,currentRadio.modulation);
+                    
+                    if (count > 0)
+                    {
+                        TunedClients.Text = "👤" + count;
+                        RadioVolume.Width = 105;
+                        TunedClients.Visibility = Visibility.Visible;
+                    }
+                    else
+                    {
+                        TunedClients.Visibility = Visibility.Hidden;
+                        RadioVolume.Width = 115;
+                    }
+                    
+                }
 
                 RadioLabel.Text = dcsPlayerRadioInfo.radios[RadioId].name;
 
@@ -358,7 +378,7 @@ namespace Ciribob.DCS.SimpleRadio.Standalone.Client.UI.RadioOverlayWindow
             }
             else
             {
-                var receiveState = TCPVoiceHandler.RadioReceivingState[RadioId];
+                var receiveState = UdpVoiceHandler.RadioReceivingState[RadioId];
                 //check if current
 
                 if ((receiveState == null) || !receiveState.IsReceiving)

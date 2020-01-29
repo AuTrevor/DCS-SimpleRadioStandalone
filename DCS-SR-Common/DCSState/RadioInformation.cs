@@ -48,6 +48,7 @@
         public float volume = 1.0f;
 
         public FreqMode freqMode = FreqMode.COCKPIT;
+        public FreqMode guardFreqMode = FreqMode.COCKPIT;
         public VolumeMode volMode = VolumeMode.COCKPIT;
 
         public bool expansion = false;
@@ -73,7 +74,7 @@
             {
                 return false;
             }
-            if (freq != compare.freq)
+            if (!DCSPlayerRadioInfo.FreqCloseEnough(freq , compare.freq))
             {
                 return false;
             }
@@ -89,7 +90,7 @@
             {
                 return false;
             }
-            if (secFreq != compare.secFreq)
+            if (!DCSPlayerRadioInfo.FreqCloseEnough(secFreq, compare.secFreq))
             {
                 return false;
             }

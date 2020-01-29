@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.Windows;
 using Ciribob.DCS.SimpleRadio.Standalone.Client.Audio.Managers;
+using Ciribob.DCS.SimpleRadio.Standalone.Client.Audio.Providers;
 using Ciribob.DCS.SimpleRadio.Standalone.Client.Audio.Utility;
 using Ciribob.DCS.SimpleRadio.Standalone.Client.DSP;
 using Ciribob.DCS.SimpleRadio.Standalone.Client.Settings;
@@ -10,6 +11,7 @@ using Ciribob.DCS.SimpleRadio.Standalone.Common;
 using Ciribob.DCS.SimpleRadio.Standalone.Common.Helpers;
 using FragLabs.Audio.Codecs;
 using NAudio.CoreAudioApi;
+using NAudio.Dmo;
 using NAudio.Wave;
 using NAudio.Wave.SampleProviders;
 using NLog;
@@ -37,7 +39,7 @@ namespace Ciribob.DCS.SimpleRadio.Standalone.Client.Audio
 
         private readonly Queue<byte> _micInputQueue = new Queue<byte>(AudioManager.SEGMENT_FRAMES * 3);
         private WaveFileWriter _waveFile;
-        private SettingsStore _settings;
+        private GlobalSettingsStore _globalSettings;
 
         public float SpeakerBoost
         {
@@ -55,12 +57,13 @@ namespace Ciribob.DCS.SimpleRadio.Standalone.Client.Audio
         public float MicMax { get; set; } = -100;
         public float SpeakerMax { get; set; } = -100;
 
-        public void StartPreview(int mic, MMDevice speakers)
+        public void StartPreview(int mic, MMDevice speakers, bool windowsN)
         {
             try
             {
-                _settings = SettingsStore.Instance;
-                _waveOut = new WasapiOut(speakers, AudioClientShareMode.Shared, true, 40);
+                _globalSettings = GlobalSettingsStore.Instance;
+
+                _waveOut = new WasapiOut(speakers, AudioClientShareMode.Shared, true, 40, windowsN);
 
                 _buffBufferedWaveProvider =
                     new BufferedWaveProvider(new WaveFormat(AudioManager.INPUT_SAMPLE_RATE, 16, 1));
@@ -69,10 +72,14 @@ namespace Ciribob.DCS.SimpleRadio.Standalone.Client.Audio
 
                 RadioFilter filter = new RadioFilter(_buffBufferedWaveProvider.ToSampleProvider());
 
+                CachedLoopingAudioProvider natoEffect =
+                    new CachedLoopingAudioProvider(filter.ToWaveProvider16(),new WaveFormat(AudioManager.INPUT_SAMPLE_RATE, 16, 1), CachedAudioEffect.AudioEffectTypes.NATO_TONE);
+
                 //add final volume boost to all mixed audio
-                _volumeSampleProvider = new VolumeSampleProviderWithPeak(filter,
+                _volumeSampleProvider = new VolumeSampleProviderWithPeak(natoEffect.ToSampleProvider(),
                     (peak => SpeakerMax = (float) VolumeConversionHelper.ConvertFloatToDB(peak)));
                 _volumeSampleProvider.Volume = SpeakerBoost;
+
 
                 if (speakers.AudioClient.MixFormat.Channels == 1)
                 {
@@ -180,7 +187,7 @@ namespace Ciribob.DCS.SimpleRadio.Standalone.Client.Audio
                 }
             }
         }
-        
+
         private void ShowOutputError(string message)
         {
             var messageBoxResult = CustomMessageBox.ShowYesNo(
@@ -238,7 +245,7 @@ namespace Ciribob.DCS.SimpleRadio.Standalone.Client.Audio
 //                    for (var i = 0; i < pcmShort.Length; i++)
 //                    {
 //                        //clipping tests thanks to Coug4r
-//                        if (_settings.GetClientSetting(SettingsKeys.RadioEffects).BoolValue)
+//                        if (_globalSettings.GetClientSetting(GlobalSettingsKeys.RadioEffects).BoolValue)
 //                        {
 //                            if (pcmShort[i] > 4000)
 //                            {
@@ -279,7 +286,7 @@ namespace Ciribob.DCS.SimpleRadio.Standalone.Client.Audio
    //                 _buffBufferedWaveProvider.AddSamples(pcmBytes, 0, pcmBytes.Length);
                     //encode as opus bytes
                     int len;
-                    //need to get framing right for opus - 
+                    //need to get framing right for opus -
                     var buff = _encoder.Encode(pcmBytes, pcmBytes.Length, out len);
 
                     if ((buff != null) && (len > 0))
@@ -317,19 +324,19 @@ namespace Ciribob.DCS.SimpleRadio.Standalone.Client.Audio
         {
             _waveIn?.Dispose();
             _waveIn = null;
-       
+
             _waveOut?.Dispose();
             _waveOut = null;
-        
+
             _playBuffer?.ClearBuffer();
             _playBuffer = null;
-          
+
             _encoder?.Dispose();
             _encoder = null;
-     
+
             _decoder?.Dispose();
             _decoder = null;
-         
+
             _playBuffer?.ClearBuffer();
             _playBuffer = null;
 

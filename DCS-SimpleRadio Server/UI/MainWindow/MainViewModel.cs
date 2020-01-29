@@ -81,10 +81,13 @@ namespace Ciribob.DCS.SimpleRadio.Standalone.Server.UI.MainWindow
         public string ExternalAWACSMode
             => ServerSettingsStore.Instance.GetGeneralSetting(ServerSettingsKeys.EXTERNAL_AWACS_MODE).BoolValue ? "ON" : "OFF";
 
-        public bool IsExternalAWACSModeEnabled { get; set; } 
+        public string AllowRadioEncryption
+            => ServerSettingsStore.Instance.GetGeneralSetting(ServerSettingsKeys.ALLOW_RADIO_ENCRYPTION).BoolValue ? "ON" : "OFF";
+
+        public bool IsExternalAWACSModeEnabled { get; set; }
             = ServerSettingsStore.Instance.GetGeneralSetting(ServerSettingsKeys.EXTERNAL_AWACS_MODE).BoolValue;
 
-        private string _externalAWACSModeBluePassword = 
+        private string _externalAWACSModeBluePassword =
             ServerSettingsStore.Instance.GetExternalAWACSModeSetting(ServerSettingsKeys.EXTERNAL_AWACS_MODE_BLUE_PASSWORD).StringValue;
         public string ExternalAWACSModeBluePassword
         {
@@ -108,7 +111,7 @@ namespace Ciribob.DCS.SimpleRadio.Standalone.Server.UI.MainWindow
             }
         }
 
-        private string _externalAWACSModeRedPassword = 
+        private string _externalAWACSModeRedPassword =
             ServerSettingsStore.Instance.GetExternalAWACSModeSetting(ServerSettingsKeys.EXTERNAL_AWACS_MODE_RED_PASSWORD).StringValue;
         public string ExternalAWACSModeRedPassword
         {
@@ -132,6 +135,62 @@ namespace Ciribob.DCS.SimpleRadio.Standalone.Server.UI.MainWindow
             }
         }
 
+        private string _testFrequencies =
+            ServerSettingsStore.Instance.GetGeneralSetting(ServerSettingsKeys.TEST_FREQUENCIES).StringValue;
+
+        private DispatcherTimer _testFrequenciesDebounceTimer;
+
+        public string TestFrequencies
+        {
+            get { return _testFrequencies; }
+            set
+            {
+                _testFrequencies = value.Trim();
+                if (_testFrequenciesDebounceTimer != null)
+                {
+                    _testFrequenciesDebounceTimer.Stop();
+                    _testFrequenciesDebounceTimer.Tick -= TestFrequenciesDebounceTimerTick;
+                    _testFrequenciesDebounceTimer = null;
+                }
+
+                _testFrequenciesDebounceTimer = new DispatcherTimer();
+                _testFrequenciesDebounceTimer.Tick += TestFrequenciesDebounceTimerTick;
+                _testFrequenciesDebounceTimer.Interval = TimeSpan.FromMilliseconds(500);
+                _testFrequenciesDebounceTimer.Start();
+
+                NotifyOfPropertyChange(() => TestFrequencies);
+            }
+        }
+
+        private string _globalLobbyFrequencies =
+            ServerSettingsStore.Instance.GetGeneralSetting(ServerSettingsKeys.GLOBAL_LOBBY_FREQUENCIES).StringValue;
+
+        private DispatcherTimer _globalLobbyFrequenciesDebounceTimer;
+
+        public string GlobalLobbyFrequencies
+        {
+            get { return _globalLobbyFrequencies; }
+            set
+            {
+                _globalLobbyFrequencies = value.Trim();
+                if (_globalLobbyFrequenciesDebounceTimer != null)
+                {
+                    _globalLobbyFrequenciesDebounceTimer.Stop();
+                    _globalLobbyFrequenciesDebounceTimer.Tick -= GlobalLobbyFrequenciesDebounceTimerTick;
+                    _globalLobbyFrequenciesDebounceTimer = null;
+                }
+
+                _globalLobbyFrequenciesDebounceTimer = new DispatcherTimer();
+                _globalLobbyFrequenciesDebounceTimer.Tick += GlobalLobbyFrequenciesDebounceTimerTick;
+                _globalLobbyFrequenciesDebounceTimer.Interval = TimeSpan.FromMilliseconds(500);
+                _globalLobbyFrequenciesDebounceTimer.Start();
+
+                NotifyOfPropertyChange(() => GlobalLobbyFrequencies);
+            }
+        }
+
+        public string TunedCountText
+            => ServerSettingsStore.Instance.GetGeneralSetting(ServerSettingsKeys.SHOW_TUNED_COUNT).BoolValue ? "ON" : "OFF";
         public string ListeningPort
             => ServerSettingsStore.Instance.GetServerSetting(ServerSettingsKeys.SERVER_PORT).StringValue;
 
@@ -235,6 +294,15 @@ namespace Ciribob.DCS.SimpleRadio.Standalone.Server.UI.MainWindow
             _eventAggregator.PublishOnBackgroundThread(new ServerSettingsChangedMessage());
         }
 
+        public void AllowRadioEncryptionToggle()
+        {
+            var newSetting = AllowRadioEncryption != "ON";
+            ServerSettingsStore.Instance.SetGeneralSetting(ServerSettingsKeys.ALLOW_RADIO_ENCRYPTION, newSetting);
+            NotifyOfPropertyChange(() => AllowRadioEncryption);
+
+            _eventAggregator.PublishOnBackgroundThread(new ServerSettingsChangedMessage());
+        }
+
         public void CheckForBetaUpdatesToggle()
         {
             var newSetting = CheckForBetaUpdates != "ON";
@@ -267,6 +335,44 @@ namespace Ciribob.DCS.SimpleRadio.Standalone.Server.UI.MainWindow
             _passwordDebounceTimer.Stop();
             _passwordDebounceTimer.Tick -= PasswordDebounceTimerTick;
             _passwordDebounceTimer = null;
+        }
+
+
+        private void TestFrequenciesDebounceTimerTick(object sender, EventArgs e)
+        {
+            ServerSettingsStore.Instance.SetGeneralSetting(ServerSettingsKeys.TEST_FREQUENCIES, _testFrequencies);
+
+            _eventAggregator.PublishOnBackgroundThread(new ServerFrequenciesChanged()
+            {
+                TestFrequencies = _testFrequencies
+            });
+
+            _testFrequenciesDebounceTimer.Stop();
+            _testFrequenciesDebounceTimer.Tick -= TestFrequenciesDebounceTimerTick;
+            _testFrequenciesDebounceTimer = null;
+        }
+
+        private void GlobalLobbyFrequenciesDebounceTimerTick(object sender, EventArgs e)
+        {
+            ServerSettingsStore.Instance.SetGeneralSetting(ServerSettingsKeys.GLOBAL_LOBBY_FREQUENCIES, _globalLobbyFrequencies);
+
+            _eventAggregator.PublishOnBackgroundThread(new ServerFrequenciesChanged()
+            {
+                GlobalLobbyFrequencies = _globalLobbyFrequencies
+            });
+
+            _globalLobbyFrequenciesDebounceTimer.Stop();
+            _globalLobbyFrequenciesDebounceTimer.Tick -= GlobalLobbyFrequenciesDebounceTimerTick;
+            _globalLobbyFrequenciesDebounceTimer = null;
+        }
+
+        public void TunedCountToggle()
+        {
+            var newSetting = TunedCountText != "ON";
+            ServerSettingsStore.Instance.SetGeneralSetting(ServerSettingsKeys.SHOW_TUNED_COUNT, newSetting);
+            NotifyOfPropertyChange(() => TunedCountText);
+
+            _eventAggregator.PublishOnBackgroundThread(new ServerSettingsChangedMessage());
         }
     }
 }

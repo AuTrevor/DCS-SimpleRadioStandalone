@@ -23,6 +23,7 @@ namespace Ciribob.DCS.SimpleRadio.Standalone.Client.UI.AwacsRadioOverlayWindow
         private const int MaxSimultaneousTransmissions = 3;
         private bool _dragging;
         private readonly ClientStateSingleton _clientStateSingleton = ClientStateSingleton.Instance;
+        private readonly ConnectedClientsSingleton _connectClientsSingleton = ConnectedClientsSingleton.Instance;
 
         public PresetChannelsViewModel ChannelViewModel { get; set; }
 
@@ -243,7 +244,7 @@ namespace Ciribob.DCS.SimpleRadio.Standalone.Client.UI.AwacsRadioOverlayWindow
                         ToggleSimultaneousTransmissionButton.IsEnabled = false;
                         ToggleSimultaneousTransmissionButton.Content = "Sim. OFF";
                     }
-                    
+
                 }
                 else
                 {
@@ -300,7 +301,7 @@ namespace Ciribob.DCS.SimpleRadio.Standalone.Client.UI.AwacsRadioOverlayWindow
             else
             {
                 var currentRadio = dcsPlayerRadioInfo.radios[RadioId];
-                var transmitting = TCPVoiceHandler.RadioSendingState;
+                var transmitting = UdpVoiceHandler.RadioSendingState;
 
                 if (transmitting.IsSending)
                 {
@@ -376,6 +377,13 @@ namespace Ciribob.DCS.SimpleRadio.Standalone.Client.UI.AwacsRadioOverlayWindow
                     if (currentRadio.enc && (currentRadio.encKey > 0))
                     {
                         RadioMetaData.Text += " E" + currentRadio.encKey; // ENCRYPTED
+                    }
+
+                    int count = _connectClientsSingleton.ClientsOnFreq(currentRadio.freq, currentRadio.modulation);
+
+                    if (count > 0)
+                    {
+                        RadioMetaData.Text += " 👤" + count;
                     }
                 }
                 RadioLabel.Text = dcsPlayerRadioInfo.radios[RadioId].name;
@@ -481,7 +489,7 @@ namespace Ciribob.DCS.SimpleRadio.Standalone.Client.UI.AwacsRadioOverlayWindow
             }
             else
             {
-                var receiveState = TCPVoiceHandler.RadioReceivingState[RadioId];
+                var receiveState = UdpVoiceHandler.RadioReceivingState[RadioId];
                 //check if current
 
                 if ((receiveState == null) || !receiveState.IsReceiving)

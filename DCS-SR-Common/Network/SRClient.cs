@@ -2,9 +2,10 @@
 using System.ComponentModel;
 using System.Net;
 using System.Net.Sockets;
+using Ciribob.DCS.SimpleRadio.Standalone.Common.DCSState;
 using Newtonsoft.Json;
 
-namespace Ciribob.DCS.SimpleRadio.Standalone.Common
+namespace Ciribob.DCS.SimpleRadio.Standalone.Common.Network
 {
     public class SRClient : INotifyPropertyChanged
     {
@@ -30,16 +31,21 @@ namespace Ciribob.DCS.SimpleRadio.Standalone.Common
         }
 
         [JsonIgnore]
-        public Socket ClientSocket { get; set; }
+        public bool Muted { get; set; }
 
         [JsonIgnore]
-        public Socket VoipPort { get; set; }
+        public IPEndPoint VoipPort { get; set; }
 
         [JsonIgnore]
         public long LastUpdate { get; set; }
 
+        [JsonIgnore]
+        public long LastRadioUpdateSent { get; set; }
+
         public DCSPlayerRadioInfo RadioInfo { get; set; }
         public DcsPosition Position { get; set; }
+
+        public DCSLatLngPosition LatLngPosition { get; set; }
 
         [JsonIgnore]
         public float LineOfSightLoss
@@ -60,6 +66,30 @@ namespace Ciribob.DCS.SimpleRadio.Standalone.Common
         }
 
         public string ClientChannelId { get; set; }
+
+        // Used by server client list to display last frequency client transmitted on
+        private string _transmittingFrequency;
+        [JsonIgnore]
+        public string TransmittingFrequency
+        {
+            get { return _transmittingFrequency; }
+            set
+            {
+                if (_transmittingFrequency != value)
+                {
+                    _transmittingFrequency = value;
+                    PropertyChanged?.Invoke(this, new PropertyChangedEventArgs("TransmittingFrequency"));
+                }
+            }
+        }
+
+        // Used by server client list to remove last frequency client transmitted on after threshold
+        [JsonIgnore]
+        public DateTime LastTransmissionReceived { get; set; }
+
+        //is an SRSClientSession but dont want to include the dependancy for now
+        [JsonIgnore]
+        public object ClientSession { get; set; }
 
         public event PropertyChangedEventHandler PropertyChanged;
 

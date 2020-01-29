@@ -1,6 +1,8 @@
 ﻿using System.Collections.Generic;
+using Newtonsoft.Json;
+using NLog.Layouts;
 
-namespace Ciribob.DCS.SimpleRadio.Standalone.Common
+namespace Ciribob.DCS.SimpleRadio.Standalone.Common.Network
 {
     public class NetworkMessage
     {
@@ -28,5 +30,12 @@ namespace Ciribob.DCS.SimpleRadio.Standalone.Common
         public string ExternalAWACSModePassword { get; set; }
 
         public string Version { get; set; }
+
+        public string Encode()
+        {
+            Version = UpdaterChecker.VERSION;
+            return JsonConvert.SerializeObject(this) + "\n";
+
+        }
     }
 }

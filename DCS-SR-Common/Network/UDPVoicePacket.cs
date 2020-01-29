@@ -1,12 +1,12 @@
-﻿using NLog;
-using System;
+﻿using System;
 using System.Text;
+using NLog;
 
-namespace Ciribob.DCS.SimpleRadio.Standalone.Common
+namespace Ciribob.DCS.SimpleRadio.Standalone.Common.Network
 {
     /**
        * UDP PACKET LAYOUT
-       * 
+       *
        * - HEADER SEGMENT
        * UInt16 Packet Length - 2 bytes
        * UInt16 AudioPart1 Length - 2 bytes
@@ -138,7 +138,7 @@ namespace Ciribob.DCS.SimpleRadio.Standalone.Common
             /**
              * FIXED SEGMENT
              */
-            
+
             // Offset for fixed segment
             var fixedSegmentOffset = PacketHeaderLength + dynamicSegmentLength;
 
@@ -168,130 +168,67 @@ namespace Ciribob.DCS.SimpleRadio.Standalone.Common
 
         public static UDPVoicePacket DecodeVoicePacket(byte[] encodedOpusAudio, bool decode = true)
         {
-            Exception originalException = null;
-
             try
             {
-                return _DecodeVoicePacket(encodedOpusAudio, decode);
+
+
+                // Last 22 bytes of packet are always the client GUID
+                var receivingGuid = Encoding.ASCII.GetString(
+                    encodedOpusAudio, encodedOpusAudio.Length - GuidLength, GuidLength);
+
+                var packetLength = BitConverter.ToUInt16(encodedOpusAudio, 0);
+
+                var ecnAudio1 = BitConverter.ToUInt16(encodedOpusAudio, 2);
+
+                var freqLength = BitConverter.ToUInt16(encodedOpusAudio, 4);
+                var freqCount = freqLength / FrequencySegmentLength;
+
+                byte[] part1 = null;
+
+                if (decode)
+                {
+                    part1 = new byte[ecnAudio1];
+                    Buffer.BlockCopy(encodedOpusAudio, 6, part1, 0, ecnAudio1);
+                }
+
+                var frequencies = new double[freqCount];
+                var modulations = new byte[freqCount];
+                var encryptions = new byte[freqCount];
+
+                var frequencyOffset = PacketHeaderLength + ecnAudio1;
+                for (var i = 0; i < freqCount; i++)
+                {
+                    frequencies[i] = BitConverter.ToDouble(encodedOpusAudio, frequencyOffset);
+                    modulations[i] = encodedOpusAudio[frequencyOffset + 8];
+                    encryptions[i] = encodedOpusAudio[frequencyOffset + 9];
+
+                    frequencyOffset += FrequencySegmentLength;
+                }
+
+                var unitId = BitConverter.ToUInt32(encodedOpusAudio, PacketHeaderLength + ecnAudio1 + freqLength);
+
+                var packetNumber =
+                    BitConverter.ToUInt64(encodedOpusAudio, PacketHeaderLength + ecnAudio1 + freqLength + 4);
+
+                return new UDPVoicePacket
+                {
+                    Guid = receivingGuid,
+                    AudioPart1Bytes = part1,
+                    AudioPart1Length = ecnAudio1,
+                    Frequencies = frequencies,
+                    UnitId = unitId,
+                    Encryptions = encryptions,
+                    Modulations = modulations,
+                    PacketNumber = packetNumber,
+                    PacketLength = packetLength
+                };
             }
             catch (Exception ex)
             {
-                // Silently ignore exception parsing audio packets and try re-parsing it using the legacy voice procotol.
-                // Store original exception should the legacy parsing fail so we can display both exceptions
-                originalException = ex;
+                Logger.Error(ex,"Unable to decode UDP Voice Packet");
             }
 
-            try
-            {
-                return _LegacyDecodeVoicePacket(encodedOpusAudio, decode);
-            }
-            catch (Exception ex)
-            {
-                // Only log exceptions if both parsing attempts failed to avoid spamming server log with exceptions
-                Logger.Error(originalException, "Failed to decode voice packet, trying to decode using legacy procotol");
-                Logger.Error(ex, "Failed to decode voice packet using legacy procotol, rethrowing error");
-
-                throw ex;
-            }
-        }
-
-        private static UDPVoicePacket _DecodeVoicePacket(byte[] encodedOpusAudio, bool decode = true)
-        {
-            // Last 22 bytes of packet are always the client GUID
-            var receivingGuid = Encoding.ASCII.GetString(
-                encodedOpusAudio, encodedOpusAudio.Length - GuidLength, GuidLength);
-
-            var packetLength = BitConverter.ToUInt16(encodedOpusAudio, 0);
-
-            var ecnAudio1 = BitConverter.ToUInt16(encodedOpusAudio, 2);
-
-            var freqLength = BitConverter.ToUInt16(encodedOpusAudio, 4);
-            var freqCount = freqLength / FrequencySegmentLength;
-
-            byte[] part1 = null;
-
-            if (decode)
-            {
-                part1 = new byte[ecnAudio1];
-                Buffer.BlockCopy(encodedOpusAudio, 6, part1, 0, ecnAudio1);
-            }
-
-            var frequencies = new double[freqCount];
-            var modulations = new byte[freqCount];
-            var encryptions = new byte[freqCount];
-
-            var frequencyOffset = PacketHeaderLength + ecnAudio1;
-            for (var i = 0; i < freqCount; i++)
-            {
-                frequencies[i] = BitConverter.ToDouble(encodedOpusAudio, frequencyOffset);
-                modulations[i] = encodedOpusAudio[frequencyOffset + 8];
-                encryptions[i] = encodedOpusAudio[frequencyOffset + 9];
-
-                frequencyOffset += FrequencySegmentLength;
-            }
-
-            var unitId = BitConverter.ToUInt32(encodedOpusAudio, PacketHeaderLength + ecnAudio1 + freqLength);
-
-            var packetNumber = BitConverter.ToUInt64(encodedOpusAudio, PacketHeaderLength + ecnAudio1 + freqLength + 4);
-
-            return new UDPVoicePacket
-            {
-                Guid = receivingGuid,
-                AudioPart1Bytes = part1,
-                AudioPart1Length = ecnAudio1,
-                Frequencies = frequencies,
-                UnitId = unitId,
-                Encryptions = encryptions,
-                Modulations = modulations,
-                PacketNumber = packetNumber,
-                PacketLength = packetLength
-            };
-        }
-
-        // Decodes audio packets using the legacy voice packet protocol (before rewrite to allow for transmissions on multiple frequencies)
-        private static UDPVoicePacket _LegacyDecodeVoicePacket(byte[] encodedOpusAudio, bool decode = true)
-        {
-            //last 22 bytes are guid!
-            var recievingGuid = Encoding.ASCII.GetString(
-                encodedOpusAudio, encodedOpusAudio.Length - GuidLength, GuidLength);
-
-            var packetLength = BitConverter.ToUInt16(encodedOpusAudio, 0);
-
-            var ecnAudio1 = BitConverter.ToUInt16(encodedOpusAudio, 2);
-
-            byte[] part1 = null;
-
-            if (decode)
-            {
-                part1 = new byte[ecnAudio1];
-                Buffer.BlockCopy(encodedOpusAudio, 4, part1, 0, ecnAudio1);
-            }
-
-            var frequency = BitConverter.ToDouble(encodedOpusAudio,
-                ecnAudio1 + 2 + 2);
-
-            //after frequency and audio
-            var modulation = encodedOpusAudio[ecnAudio1 + 2 + 8 + 2];
-
-            var encryption = encodedOpusAudio[ecnAudio1 + 2 + 8 + 1 + 2];
-
-            var unitId = BitConverter.ToUInt32(encodedOpusAudio, ecnAudio1 + 2 + 8 + 1 + 1 + 2);
-
-            var packetNumber = BitConverter.ToUInt32(encodedOpusAudio, ecnAudio1 + 2 + 8 + 1 + 1 + 4 + 2);
-
-            return new UDPVoicePacket
-            {
-                Guid = recievingGuid,
-                AudioPart1Bytes = part1,
-                AudioPart1Length = ecnAudio1,
-                Frequencies = new double[] { frequency },
-                UnitId = unitId,
-                Encryptions = new byte[] { encryption },
-                Modulations = new byte[] { modulation },
-                PacketNumber = packetNumber,
-                PacketLength = packetLength
-            };
+            return null;
         }
     }
 }
- 

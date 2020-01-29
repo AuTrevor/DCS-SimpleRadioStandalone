@@ -106,6 +106,7 @@
     </Reference>
   </ItemGroup>
   <ItemGroup>
+    <Compile Include="DCSState\DCSLatLngPosition.cs" />
     <Compile Include="DCSState\RadioReceivingPriority.cs" />
     <Compile Include="DCSState\RadioReceivingState.cs" />
     <Compile Include="Helpers\CircularBuffer.cs" />
@@ -115,6 +116,7 @@
     <Compile Include="Helpers\ListHelper.cs" />
     <Compile Include="Helpers\VolumeConversionHelper.cs" />
     <Compile Include="Network\Analytics.cs" />
+    <Compile Include="Network\ClientListExport.cs" />
     <Compile Include="Network\NetworkMessage.cs" />
     <Compile Include="Network\UDPInterfaceCommand.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
